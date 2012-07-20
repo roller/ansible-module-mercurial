@@ -25,4 +25,5 @@ pip-log.txt
 
 # Dev tools
 *.swp
+*.bak
 

@@ -10,6 +10,7 @@ Maintained at: https://github.com/bradobro/ansible-module-mercurial
 Usage
 =====
 
+```
 mercurial
     repo = source repository location
     dest = destination directory for the repository clone
@@ -18,6 +19,7 @@ mercurial
                because mercurial uses 'hg up -C' to switch to branch tips, tags, or
                changesets
     owner = name of the user to own the repository tree, as if this user had run Mercurial
+```
 
 Prerequisites
 =============
