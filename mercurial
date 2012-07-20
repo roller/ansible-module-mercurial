@@ -123,9 +123,8 @@ def ensure_working_copy( params):
     # handle custom ssh keyfile
     options = " "
     if repo.startswith("ssh://") and params["keyfile"]:
-        options += "-i %(keyfile)s " % params
+        options += "--ssh '/usr/bin/ssh -i %(keyfile)s' " % params
 
-    
     if not exists(history):
         msg = "cloning %s to %s" % (repo, dest)
         cmd = hg + "clone %s %s %s" % (options, repo, dest)
