@@ -104,6 +104,7 @@ def ensure_working_copy( params):
     owner = params.get("owner", None)
     rev = params.get("revision", "default")
     debug = params.get("debug", False) #ANYTHING for debug enables it (even "debug=False") !
+    keyfile = params.get("keyfile",None) #will use .ssh/id_rsa by default
 
     #== Clone new local repository or pull changes to existing.
     msg = "calculating destination path from %s" % dest
@@ -118,16 +119,22 @@ def ensure_working_copy( params):
             pass #ignore directory exists errors
         else:
             raise 
+
+    # handle custom ssh keyfile
+    options = " "
+    if repo.startswith("ssh://") and params["keyfile"]:
+        options += "-i %(keyfile)s " % params
+
     
     if not exists(history):
         msg = "cloning %s to %s" % (repo, dest)
-        cmd = hg + "clone %s %s" % (repo, dest)
+        cmd = hg + "clone %s %s %s" % (options, repo, dest)
         rc, out, err = run(cmd, user=owner)
     else:
         # Assumes paths.default set correctly in repo's .hg/hgrc
         # TODO: could confirm that with regex and 'hg paths'. Or could do explicit pull.
         msg = "pulling changes from %s to %s" % (repo, dest)
-        rc, out, err = run( hg + "pull", cwd=dest, user=owner)
+        rc, out, err = run( hg + "pull " + options, cwd=dest, user=owner)
 
     #== Update to revision.
     msg = "updating to revision %s" % rev
