@@ -22,50 +22,10 @@ You should have received a copy of the GNU General Public License
 along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-try:
-    import json
-except ImportError:
-    import simplejson as json
+import os, syslog, subprocess
+from os.path import abspath, expanduser, exists, join
 
-import sys, os, shlex, syslog, subprocess
-from os.path import abspath, expanduser, exists, isfile, join
-
-params = {}
 msg=""
-
-def exit_json(rc=0, **kwargs):
-    if 'name' in kwargs:
-        add_user_info(kwargs)
-    print json.dumps(kwargs)
-    sys.exit(rc)
-
-def fail_json(**kwargs):
-    kwargs['failed'] = True
-    exit_json(rc=1, **kwargs)
-
-def get_params():
-    """Startup tasks and read params.
-
-    :return: parameters as dictionary.
-    """
-    global msg
-
-    msg = "reading params"
-    with file(sys.argv[1]) as f:            #read the args file
-        args = f.read()
-
-    msg = "writing syslog."
-    syslog.openlog('ansible-%s' % os.path.basename(__file__))
-    syslog.syslog(syslog.LOG_NOTICE, 'Invoked with %s' % args)
-
-    msg = "parsing params"
-    params = dict(                            # make a dictionary of...
-        [ arg.split("=", 1)                 # assignment pairs IMPORTANT to only split to first '='!
-          for arg in shlex.split(args)  # using shell lexing
-          if "=" in arg                     # ignoring tokens without assignment
-        ])
-
-    return params
 
 def run( cmd, cwd=None, user=None):
     """Run a command.
@@ -99,24 +59,15 @@ def ensure_working_copy( params):
     global msg
 
     hg = "/usr/bin/hg " #mercurial command, probably should check if it's there
-    #== Scrub Parameters
-    msg = "missing param: dest" 
-    dest = params["dest"]
-    msg = "missing param: repo" 
-    repo = params["repo"]
-    owner = params.get("owner", None)
-    rev = params.get("revision", "default")
-    debug = params.get("debug", False) #ANYTHING for debug enables it (even "debug=False") !
-    keyfile = params.get("keyfile",None) #will use .ssh/id_rsa by default
 
     #== Clone new local repository or pull changes to existing.
     msg = "calculating destination path from %s" % dest
 
-    dest = abspath( expanduser( dest))
+    params["dest"] = abspath( expanduser( dest))
     history = join( dest,".hg")
     msg = "creating destination path %s" % dest
     try:
-        os.makedirs(dest)
+        os.makedirs(params["dest"])
     except OSError, e:
         if e.errno==17: 
             pass #ignore directory exists errors
@@ -124,43 +75,52 @@ def ensure_working_copy( params):
             raise 
 
     # handle custom ssh keyfile
-    options = " "
+    syslog.syslog(syslog.LOG_DEBUG, "Mercurial  options......")
+    params["options"] = " --error_causing_option "
     if repo.startswith("ssh://") and params["keyfile"]:
-        options += "--ssh '/usr/bin/ssh -i %(keyfile)s' " % params
+        params["options"] += ('--ssh "/usr/bin/ssh -i %(keyfile)s" ' % params)
 
+    syslog.syslog(syslog.LOG_ERR, "Mercurial  options = %(options)s" % params)
     if not exists(history):
-        msg = "cloning %s to %s" % (repo, dest)
-        cmd = hg + "clone %s %s %s" % (options, repo, dest)
-        rc, out, err = run(cmd, user=owner)
+        msg = "cloning %(repo)s to %(dest)s" % params
+        cmd = hg + "clone %(options)s %(repo)s %(dest)s" % params
+        rc, out, err = run(cmd, user=params["owner"])
     else:
         # Assumes paths.default set correctly in repo's .hg/hgrc
-        # TODO: could confirm that with regex and 'hg paths'. Or could do explicit pull.
-        msg = "pulling changes from %s to %s" % (repo, dest)
-        rc, out, err = run( hg + "pull " + options, cwd=dest, user=owner)
+        msg = "pulling changes from %(repo)s to %(repo)s" % (repo, dest)
+        cmd = hg + "pull -R %(repo)s %(options)s" % params
+        rc, out, err = run( cmd, cwd=params["dest"], user=params["owner"])
 
     #== Update to revision.
     msg = "updating to revision %s" % rev
-    rc, out, err = run(hg + "up -C "  + rev, cwd=dest, user=owner)
+    rc, out, err = run(hg + "up -C "  + rev, cwd=params["dest"], user=owner)
 
     return True
 
-#===== MAIN SCRIPT ===================================================
+def main():
+    global msg
 
-try:
-    params = get_params()
-    changed = ensure_working_copy( params)
-    msg = ""
-except:
-    msg = "Error %s" % msg
+    module = AnsibleModule(
+        argument_spec = dict(
+            repo = dict( required=True),	    
+            dest = dict( required=True),
+            owner = dict( default=""),
+            rev = dict( default="default"),
+            keyfile = dict( default=""),
+        ),
+    )
 
-# Don't do json exits within try...except. Need a clean way to not catch their sys.exit()
-if msg:
-    syslog.syslog(syslog.LOG_ERR, "Ansible error in mercurial module: " + msg)
-    if params.get("debug",False):
-        import traceback
-        fail_json(msg=msg, traceback=traceback.format_exc())
-    else:
-        fail_json(msg=msg)
-else:
-    exit_json( dest=params["dest"], changed=changed)
-    
+    params = module.params
+
+    try:
+        changed = ensure_working_copy(params)
+        msg = ""
+        module.exit_json( dest=params["dest"], changed=changed)
+    except StandardError, e:  #Standard error works in >= 2.4 to skip sys.exit() generated by fail_json and exit_json
+        msg = "Error %s" % msg
+        syslog.syslog(syslog.LOG_ERR, "Ansible error in mercurial module: " + msg)
+        module.fail_json(msg=msg, traceback=traceback.format_exc(), params=params)
+
+# include magic from lib/ansible/module_common.py
+#<<INCLUDE_ANSIBLE_MODULE_COMMON>>
+main()
