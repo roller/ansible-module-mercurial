@@ -61,11 +61,11 @@ def ensure_working_copy( params):
     hg = "/usr/bin/hg " #mercurial command, probably should check if it's there
 
     #== Clone new local repository or pull changes to existing.
-    msg = "calculating destination path from %s" % dest
+    msg = "calculating destination path from %(dest)s" % params
 
-    params["dest"] = abspath( expanduser( dest))
-    history = join( dest,".hg")
-    msg = "creating destination path %s" % dest
+    params["dest"] = abspath( expanduser( params["dest"]))
+    history = join( params["dest"],".hg")
+    msg = "creating destination path %(dest)s" % params
     try:
         os.makedirs(params["dest"])
     except OSError, e:
@@ -74,13 +74,7 @@ def ensure_working_copy( params):
         else:
             raise 
 
-    # handle custom ssh keyfile
-    syslog.syslog(syslog.LOG_DEBUG, "Mercurial  options......")
-    params["options"] = " --error_causing_option "
-    if repo.startswith("ssh://") and params["keyfile"]:
-        params["options"] += ('--ssh "/usr/bin/ssh -i %(keyfile)s" ' % params)
-
-    syslog.syslog(syslog.LOG_ERR, "Mercurial  options = %(options)s" % params)
+    syslog.syslog(syslog.LOG_DEBUG, "Mercurial  options = %(options)s" % params)
     if not exists(history):
         msg = "cloning %(repo)s to %(dest)s" % params
         cmd = hg + "clone %(options)s %(repo)s %(dest)s" % params
@@ -92,8 +86,8 @@ def ensure_working_copy( params):
         rc, out, err = run( cmd, cwd=params["dest"], user=params["owner"])
 
     #== Update to revision.
-    msg = "updating to revision %s" % rev
-    rc, out, err = run(hg + "up -C "  + rev, cwd=params["dest"], user=owner)
+    msg = "updating to revision %(rev)s" % params
+    rc, out, err = run(hg + "up -C "  + rev, cwd=params["dest"], user=params["owner"])
 
     return True
 
@@ -104,9 +98,8 @@ def main():
         argument_spec = dict(
             repo = dict( required=True),	    
             dest = dict( required=True),
-            owner = dict( default=""),
+            owner = dict( required=True),
             rev = dict( default="default"),
-            keyfile = dict( default=""),
         ),
     )
 
