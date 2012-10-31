@@ -61,7 +61,7 @@ def get_hg_id(hg, params):
     cmd = hg + "id --id"
     rc, out, err = run( cmd, cwd=params["dest"], user=params["owner"])
     if rc == 0:
-        return out
+        return out.strip()
     else:
         return None
 
